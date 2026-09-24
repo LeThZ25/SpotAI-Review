@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<BugCollection version="4.8.3" sequence="0" timestamp="1729900000000" analysisTimestamp="1729900005000" release="1.0.0">
+  <Project projectName="repo1_ecommerce_java">
+    <Jar>target/classes</Jar>
+  </Project>
+  <BugInstance type="NP_NULL_ON_SOME_PATH" priority="1" rank="6" abbrev="NP" category="CORRECTNESS">
+    <ShortMessage>Possible null pointer dereference</ShortMessage>
+    <LongMessage>Possible null pointer dereference of customer in com.ecommerce.OrderProcessor.processOrderCheckout(String, String, List, double, String, double, String)</LongMessage>
+    <Class classname="com.ecommerce.OrderProcessor">
+      <SourceLine classname="com.ecommerce.OrderProcessor" start="10" end="85" sourcepath="src/main/java/com/ecommerce/OrderProcessor.java"/>
+    </Class>
+    <Method classname="com.ecommerce.OrderProcessor" name="processOrderCheckout" signature="(Ljava/lang/String;Ljava/lang/String;Ljava/util/List;DLjava/lang/String;DLjava/lang/String;)D" isStatic="false">
+      <SourceLine classname="com.ecommerce.OrderProcessor" start="15" end="62" sourcepath="src/main/java/com/ecommerce/OrderProcessor.java"/>
+    </Method>
+    <SourceLine classname="com.ecommerce.OrderProcessor" start="22" end="25" sourcepath="src/main/java/com/ecommerce/OrderProcessor.java"/>
+  </BugInstance>
+  <BugInstance type="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" priority="1" rank="3" abbrev="SQL" category="SECURITY">
+    <ShortMessage>Nonconstant string passed to execute or addBatch method on an SQL statement</ShortMessage>
+    <LongMessage>com.ecommerce.OrderProcessor.findOrdersByCustomer(Connection, String, String) passes a nonconstant String to an execute query method</LongMessage>
+    <Class classname="com.ecommerce.OrderProcessor">
+      <SourceLine classname="com.ecommerce.OrderProcessor" start="10" end="95" sourcepath="src/main/java/com/ecommerce/OrderProcessor.java"/>
+    </Class>
+    <Method classname="com.ecommerce.OrderProcessor" name="findOrdersByCustomer" signature="(Ljava/sql/Connection;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;" isStatic="false">
+      <SourceLine classname="com.ecommerce.OrderProcessor" start="82" end="94" sourcepath="src/main/java/com/ecommerce/OrderProcessor.java"/>
+    </Method>
+    <SourceLine classname="com.ecommerce.OrderProcessor" start="85" end="89" sourcepath="src/main/java/com/ecommerce/OrderProcessor.java"/>
+  </BugInstance>
+  <BugInstance type="SBSC_USE_STRINGBUFFER_CONCATENATION" priority="2" rank="14" abbrev="SBSC" category="PERFORMANCE">
+    <ShortMessage>Method concatenates strings using + in a loop</ShortMessage>
+    <LongMessage>com.ecommerce.InvoiceGenerator.buildBatchInvoiceText(List) concatenates strings using + in a loop</LongMessage>
+    <Class classname="com.ecommerce.InvoiceGenerator">
+      <SourceLine classname="com.ecommerce.InvoiceGenerator" start="6" end="52" sourcepath="src/main/java/com/ecommerce/InvoiceGenerator.java"/>
+    </Class>
+    <Method classname="com.ecommerce.InvoiceGenerator" name="buildBatchInvoiceText" signature="(Ljava/util/List;)Ljava/lang/String;" isStatic="false">
+      <SourceLine classname="com.ecommerce.InvoiceGenerator" start="32" end="46" sourcepath="src/main/java/com/ecommerce/InvoiceGenerator.java"/>
+    </Method>
+    <SourceLine classname="com.ecommerce.InvoiceGenerator" start="35" end="41" sourcepath="src/main/java/com/ecommerce/InvoiceGenerator.java"/>
+  </BugInstance>
+</BugCollection>
