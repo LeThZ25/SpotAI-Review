@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<BugCollection version="4.8.3" sequence="0" timestamp="1729901000000" analysisTimestamp="1729901005000" release="1.0.0">
+  <Project projectName="repo2_payment_gateway">
+    <Jar>target/classes</Jar>
+  </Project>
+  <BugInstance type="ODR_OPEN_DATABASE_RESOURCE" priority="1" rank="7" abbrev="ODR" category="BAD_PRACTICE">
+    <ShortMessage>Method may fail to close database resource</ShortMessage>
+    <LongMessage>com.payment.PaymentSettlementService.auditLedgerEntries(Connection, String) may fail to close PreparedStatement</LongMessage>
+    <Class classname="com.payment.PaymentSettlementService">
+      <SourceLine classname="com.payment.PaymentSettlementService" start="8" end="78" sourcepath="src/main/java/com/payment/PaymentSettlementService.java"/>
+    </Class>
+    <Method classname="com.payment.PaymentSettlementService" name="auditLedgerEntries" signature="(Ljava/sql/Connection;Ljava/lang/String;)I" isStatic="false">
+      <SourceLine classname="com.payment.PaymentSettlementService" start="56" end="70" sourcepath="src/main/java/com/payment/PaymentSettlementService.java"/>
+    </Method>
+    <SourceLine classname="com.payment.PaymentSettlementService" start="58" end="65" sourcepath="src/main/java/com/payment/PaymentSettlementService.java"/>
+  </BugInstance>
+</BugCollection>
