@@ -1,0 +1,50 @@
+name: SpotAI-Review Pull Request Quality Gate
+
+on:
+  pull_request:
+    branches: [ "main", "develop" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+  security-events: write
+
+jobs:
+  spotai-code-review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Pull Request Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17 for SpotBugs Bytecode Analysis
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Python 3.11 for SpotAI-Review Engine
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run SpotAI-Review (SpotBugs + AST Smells + Clone Detection + AI Refactoring)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          python3 spotai_cli.py --repo . --output-dir reports/pr_review --clone-threshold 0.80 --milestone 4
+
+      - name: Upload SARIF Report to GitHub Security Tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: reports/pr_review/analysis_report.sarif
+
+      - name: Upload HTML Dashboard & Markdown Report Artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: spotai-review-artifacts
+          path: reports/pr_review/
