@@ -7,3 +7,5 @@ reports/
 .coverage
 htmlcov/
 .ai_refactor_cache.json
+.env
+.env.local

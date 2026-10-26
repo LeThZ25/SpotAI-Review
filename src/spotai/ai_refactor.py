@@ -24,8 +24,31 @@ from typing import Dict, List, Optional
 from .models import CodeIssue
 
 
+def _load_env_file():
+    """Load key-value pairs from .env file into os.environ without requiring external packages."""
+    search_paths = [
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".env")),
+        os.path.abspath(".env"),
+    ]
+    for env_path in search_paths:
+        if os.path.exists(env_path):
+            try:
+                with open(env_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith("#") and "=" in line:
+                            k, v = line.split("=", 1)
+                            k, v = k.strip(), v.strip().strip("'\"")
+                            if k and k not in os.environ:
+                                os.environ[k] = v
+                break
+            except Exception:
+                pass
+
+
 class AIRefactoringEngine:
     def __init__(self, provider: str = "auto", model: Optional[str] = None, cache_file: Optional[str] = None):
+        _load_env_file()
         self.provider = provider.lower()
         self.groq_key = os.environ.get("GROQ_API_KEY", "").strip()
         self.gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
