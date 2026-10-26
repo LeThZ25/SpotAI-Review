@@ -31,6 +31,7 @@ jobs:
       - name: Run SpotAI-Review (SpotBugs + AST Smells + Clone Detection + AI Refactoring)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
