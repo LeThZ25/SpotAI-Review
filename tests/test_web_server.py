@@ -1,5 +1,7 @@
 import os
 import sys
+import io
+import zipfile
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -99,6 +101,37 @@ class TestWebServerAndSnippetAnalyzer(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertIn("SpotAI-Review", res.text)
         self.assertIn("Live Code Playground", res.text)
+        self.assertIn("drop-zone", res.text)
+
+    def test_api_upload_and_analyze_py_file(self):
+        py_code = b"def calculate(x: int) -> int:\n    return x * 2\n"
+        files = [("files", ("test_calc.py", py_code, "text/x-python"))]
+        res = self.client.post("/api/upload-and-analyze", files=files, data={"milestone": "1"})
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["status"], "success")
+        self.assertEqual(data["detected_files"]["python"], 1)
+
+    def test_api_upload_and_analyze_unsupported_file(self):
+        txt_content = b"This is just a readme file without code."
+        files = [("files", ("readme.txt", txt_content, "text/plain"))]
+        res = self.client.post("/api/upload-and-analyze", files=files, data={"milestone": "1"})
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["status"], "no_supported_files")
+        self.assertIn("No Java", data["message"])
+
+    def test_api_upload_and_analyze_zip_archive(self):
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w") as zf:
+            zf.writestr("Main.java", "public class Main { public static void main(String[] args) {} }")
+        zip_buffer.seek(0)
+        files = [("files", ("project.zip", zip_buffer.getvalue(), "application/zip"))]
+        res = self.client.post("/api/upload-and-analyze", files=files, data={"milestone": "1"})
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["status"], "success")
+        self.assertEqual(data["detected_files"]["java"], 1)
 
 
 if __name__ == "__main__":

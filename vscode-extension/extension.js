@@ -68,6 +68,7 @@ function getWebviewContent(serverUrl, isServerOnline) {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; frame-src * blob: data: http: https:; connect-src *;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SpotAI-Review</title>
   <style>
@@ -353,3 +354,4 @@ module.exports = {
   activate,
   deactivate
 };
+

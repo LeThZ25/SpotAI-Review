@@ -1,0 +1,24 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Launch SpotAI VS Code Extension (F5)",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}/vscode-extension"
+      ],
+      "outFiles": [
+        "${workspaceFolder}/vscode-extension/**/*.js"
+      ]
+    },
+    {
+      "name": "Start SpotAI Web Server",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/spotai_cli.py",
+      "args": ["--web", "--port", "8000"],
+      "console": "integratedTerminal"
+    }
+  ]
+}
