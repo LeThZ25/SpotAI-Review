@@ -1,0 +1,103 @@
+{
+  "name": "spotai-review",
+  "displayName": "SpotAI-Review Code Assistant",
+  "description": "Static Code Analysis, Complexity Metrics & AI-Powered Refactoring for Java & Python",
+  "version": "1.0.0",
+  "publisher": "group4-ictu",
+  "author": "Duong Le Thuong & Duong Quoc Toan (ICTU Group 4)",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Linters",
+    "Programming Languages",
+    "Education"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onLanguage:python",
+    "onLanguage:java"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "spotai.openDashboard",
+        "title": "SpotAI: Open Review Dashboard",
+        "category": "SpotAI"
+      },
+      {
+        "command": "spotai.reviewSelection",
+        "title": "SpotAI: Review Selected Snippet",
+        "category": "SpotAI"
+      },
+      {
+        "command": "spotai.reviewCurrentFile",
+        "title": "SpotAI: Analyze Entire Current File",
+        "category": "SpotAI"
+      },
+      {
+        "command": "spotai.startServer",
+        "title": "SpotAI: Start Local Web Server",
+        "category": "SpotAI"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "spotai.reviewSelection",
+          "when": "editorHasSelection && (resourceExtname == .py || resourceExtname == .java)",
+          "group": "spotai@1"
+        },
+        {
+          "command": "spotai.reviewCurrentFile",
+          "when": "resourceExtname == .py || resourceExtname == .java",
+          "group": "spotai@2"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "spotai.openDashboard",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "spotai.openDashboard"
+        },
+        {
+          "command": "spotai.reviewSelection"
+        },
+        {
+          "command": "spotai.reviewCurrentFile"
+        },
+        {
+          "command": "spotai.startServer"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "SpotAI-Review Configuration",
+      "properties": {
+        "spotai.serverUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:8000",
+          "description": "Backend API endpoint URL (Local FastAPI server or Cloud Render URL)"
+        },
+        "spotai.pythonPath": {
+          "type": "string",
+          "default": "python",
+          "description": "Path to Python executable used to launch the SpotAI backend server"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^18.x",
+    "@types/vscode": "^1.75.0",
+    "typescript": "^5.0.0"
+  }
+}

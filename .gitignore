@@ -9,3 +9,6 @@ htmlcov/
 .ai_refactor_cache.json
 .env
 .env.local
+node_modules/
+*.vsix
+.vscode-test/

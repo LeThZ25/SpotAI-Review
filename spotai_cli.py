@@ -28,7 +28,7 @@ def main():
     )
     parser.add_argument(
         "--repo",
-        required=True,
+        default=None,
         help="Path to target Java/Python repository or remote Git/GitHub URL (e.g. https://github.com/user/repo)"
     )
     parser.add_argument("--output-dir", default="reports", help="Directory to write output reports")
@@ -42,6 +42,9 @@ def main():
         action="store_true",
         help="Automatically delete the temporary cloned directory after analysis completes"
     )
+    parser.add_argument("--web", action="store_true", help="Launch SpotAI-Review FastAPI Web Application and UI")
+    parser.add_argument("--port", type=int, default=8000, help="Port to run the web server on (default: 8000)")
+    parser.add_argument("--host", default="0.0.0.0", help="Host address to bind the web server (default: 0.0.0.0)")
     args = parser.parse_args()
 
     for stream_name in ("stdout", "stderr"):
@@ -52,6 +55,28 @@ def main():
                 reconfig(encoding="utf-8", errors="replace")
             except Exception:
                 pass
+
+    if args.web:
+        try:
+            import uvicorn
+            from spotai.web_server import app
+        except ImportError:
+            try:
+                from src.spotai.web_server import app
+            except ImportError as err:
+                print(f"[ERROR] Failed to import web server modules: {err}", file=sys.stderr)
+                sys.exit(1)
+        print("============================================================")
+        print(f"   Starting SpotAI-Review Web Dashboard on http://localhost:{args.port}")
+        print(f"   REST API and Interactive Docs: http://localhost:{args.port}/docs")
+        print("============================================================")
+        uvicorn.run(app, host=args.host, port=args.port)
+        return
+
+    if not args.repo:
+        parser.print_help()
+        print("\n[ERROR] Either --repo <path_or_url> or --web must be specified.", file=sys.stderr)
+        sys.exit(1)
 
     repo_dir: str = ""
     is_temp: bool = False
