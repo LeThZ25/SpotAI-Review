@@ -49,18 +49,36 @@ class ASTCodeSmellAnalyzer:
         metrics: List[MethodMetric] = []
         files_scanned = 0
         total_loc = 0
+        repo_root = os.path.realpath(repo_root)
+
+        def within_repo(path: str) -> bool:
+            try:
+                return os.path.commonpath((repo_root, os.path.realpath(path))) == repo_root
+            except ValueError:
+                return False
 
         for root, dirs, files in os.walk(repo_root):
             dirs[:] = [
                 d for d in dirs
-                if d not in {".git", "__pycache__", "node_modules", "target", "build", ".venv", "venv", "env", ".idea", ".vscode", "dist", ".gradle"}
+                if d not in {".git", "__pycache__", "node_modules", "target", "build", ".venv", "venv", "env", ".idea", ".vscode", "dist", ".gradle"} and within_repo(os.path.join(root, d))
             ]
             for fname in sorted(files):
                 if fname.endswith(".java") or fname.endswith(".py"):
                     full_path = os.path.join(root, fname)
+                    if not within_repo(full_path):
+                        continue
                     rel_path = os.path.relpath(full_path, repo_root)
-                    with open(full_path, "r", encoding="utf-8", errors="replace") as f:
-                        source = f.read()
+                    try:
+                        with open(full_path, "r", encoding="utf-8", errors="replace") as f:
+                            source = f.read()
+                    except OSError as exc:
+                        issues.append(CodeIssue(
+                            issue_id=self._next_id(), source_engine="AST-Smell",
+                            category="ANALYSIS", smell_or_bug_type="ANALYSIS_ERROR",
+                            severity="HIGH", file_path=rel_path, start_line=1, end_line=1,
+                            entity_name=fname, message=f"Could not read source file: {exc.strerror or 'I/O error'}",
+                        ))
+                        continue
                     lines = source.splitlines()
                     loc = sum(1 for ln in lines if ln.strip() and not ln.strip().startswith(("//", "#", "/*", "*")))
                     total_loc += loc
@@ -90,7 +108,15 @@ class ASTCodeSmellAnalyzer:
         metrics: List[MethodMetric] = []
         try:
             tree = ast.parse(source)
-        except SyntaxError:
+        except SyntaxError as exc:
+            line = exc.lineno or 1
+            issues.append(CodeIssue(
+                issue_id=self._next_id(), source_engine="AST-Smell",
+                category="ANALYSIS", smell_or_bug_type="ANALYSIS_ERROR",
+                severity="HIGH", file_path=rel_path, start_line=line, end_line=line,
+                entity_name=rel_path, message=f"Python syntax error: {exc.msg}",
+                code_snippet=lines[line - 1] if line <= len(lines) else "",
+            ))
             return issues, metrics
 
         for node in ast.walk(tree):

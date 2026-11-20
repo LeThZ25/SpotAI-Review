@@ -10,6 +10,7 @@ import shutil
 import stat
 import subprocess
 import time
+import uuid
 from typing import Tuple
 
 
@@ -25,11 +26,13 @@ class RepoResolver:
         r"^https?://",
         r"^git@",
         r"^ssh://",
-        r"\.git$",
     ]
 
-    def __init__(self, temp_base_dir: str = "temp_repos"):
+    def __init__(self, temp_base_dir: str = "temp_repos", clone_timeout: int = 180,
+                 restrict_redirects: bool = False):
         self.temp_base_dir = temp_base_dir
+        self.clone_timeout = clone_timeout
+        self.restrict_redirects = restrict_redirects
 
     @classmethod
     def is_git_url(cls, target: str) -> bool:
@@ -99,8 +102,7 @@ class RepoResolver:
             )
 
         repo_name = self.extract_repo_name(git_url)
-        timestamp = int(time.time())
-        clone_folder_name = f"{repo_name}_{timestamp}"
+        clone_folder_name = f"{repo_name}_{uuid.uuid4().hex[:12]}"
         target_dir = os.path.abspath(os.path.join(self.temp_base_dir, clone_folder_name))
 
         os.makedirs(self.temp_base_dir, exist_ok=True)
@@ -108,14 +110,16 @@ class RepoResolver:
         print(f"\n[INFO] Remote Git URL detected: {git_url}")
         print(f"[INFO] Shallow cloning (--depth 1) into temporary directory: {target_dir}")
 
-        cmd = [
-            "git",
+        cmd = ["git"]
+        if self.restrict_redirects:
+            cmd.extend(["-c", "http.followRedirects=false", "-c", "protocol.file.allow=never"])
+        cmd.extend([
             "clone",
             "--depth", "1",
             "--single-branch",
             git_url,
             target_dir
-        ]
+        ])
 
         try:
             process = subprocess.run(
@@ -124,7 +128,7 @@ class RepoResolver:
                 text=True,
                 encoding="utf-8",
                 errors="replace",
-                timeout=180,  # 3 minutes timeout
+                timeout=self.clone_timeout,
                 check=False
             )
 
@@ -144,7 +148,7 @@ class RepoResolver:
         except subprocess.TimeoutExpired:
             self.cleanup(target_dir)
             raise RepoResolverError(
-                f"Timeout (180s) expired while cloning repository from '{git_url}'.\n"
+                f"Timeout ({self.clone_timeout}s) expired while cloning repository from '{git_url}'.\n"
                 f"Please check network connection."
             )
         except Exception as e:

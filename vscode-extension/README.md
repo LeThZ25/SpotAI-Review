@@ -1,81 +1,58 @@
-# SpotAI-Review VS Code Extension
+# SpotAI-Review — VS Code Extension (Windows x64)
 
-VS Code Extension for **SpotAI-Review** (Topic 4 — Software Engineering, Group 4: Dương Lê Thưởng & Dương Quốc Toản).
+Phân tích mã nguồn Python và Java trong VS Code với backend tích hợp sẵn. Bản
+`1.1.2` chạy sau khi cài `.vsix`, không yêu cầu cài Python, chạy server hay
+khai báo đường dẫn backend.
 
-This extension provides an interactive, side-by-side code review experience right inside Visual Studio Code, combining static analysis (SpotBugs + AST Smells + McCabe/Cognitive Complexity) with LLM-powered refactoring suggestions for **Java** and **Python**.
+## Cài đặt và sử dụng
 
----
+1. Trong VS Code mở **Extensions → … → Install from VSIX…** và chọn
+   `spotai-review-1.1.2.vsix`.
+2. Mở thư mục dự án Python/Java bất kỳ.
+3. Dùng Command Palette (`Ctrl+Shift+P`) để chạy **SpotAI: Open Review Dashboard**.
+   Backend tự khởi động và dashboard mở ở panel bên cạnh.
+4. Trong tệp `.py` hoặc `.java`, chọn đoạn mã và chạy **SpotAI: Review Selected
+   Snippet** từ menu chuột phải hoặc Command Palette. **SpotAI: Analyze Entire
+   Current File** xử lý toàn bộ tệp. Hai lệnh này mở panel **SpotAI Code Review**
+   với tổng số issues, Quality Gate, metrics, vị trí lỗi và đề xuất refactoring.
+   Nhấn **Go to line** ở mỗi issue để quay tới dòng mã liên quan. Lệnh **Open
+   Review Dashboard** mở giao diện Web dành cho repository và Playground.
 
-## 🌟 Key Features
+Nếu đã cài phiên bản cũ, cài `spotai-review-1.1.2.vsix` và chạy **Developer:
+Reload Window** trong VS Code để kích hoạt bản cập nhật.
 
-1. **Side-by-Side Review Dashboard (`spotai.openDashboard`)**:
-   - Opens the unified SpotAI Review Webview directly in VS Code (`ViewColumn.Beside`).
-   - Switch between **Repository Reviewer**, **Live Code Playground**, and **Architecture Specs**.
-2. **Instant Snippet Review (`spotai.reviewSelection`)**:
-   - Highlight any Java method or Python function in your editor.
-   - Right-click and choose **"SpotAI: Review Selected Snippet"**.
-   - Instantly calculates McCabe CC, Cognitive Complexity, Maintainability Index, detects code smells, and presents Before/After refactoring.
-3. **Analyze Entire Active File (`spotai.reviewCurrentFile`)**:
-   - Review the complete active `.java` or `.py` file in one click.
-4. **Dual Architecture (Webview Bridge)**:
-   - Connects seamlessly to a local FastAPI backend (`http://localhost:8000`) or cloud-deployed instance (e.g., Render/Railway).
-   - If the backend is not running, the extension offers a 1-click button to launch `python spotai_cli.py --web` inside the VS Code integrated terminal.
+**SpotAI: Start Local Web Server** là lệnh bổ sung để chủ động khởi động backend.
+Các lệnh phân tích và dashboard tự thực hiện thao tác này khi cần.
 
----
+Extension dùng một cổng `127.0.0.1` trống mỗi lần khởi động. Tệp tải lên,
+cache AI và báo cáo được ghi trong thư mục lưu trữ riêng của extension do VS Code
+cấp. Phân tích repository cục bộ trong dashboard được giới hạn theo workspace
+đang mở. Để phân tích thư mục khác, hãy mở thư mục đó bằng VS Code.
 
-## 🚀 Getting Started
+Phân tích tĩnh và đề xuất fallback hoạt động offline. AI qua nhà cung cấp cloud
+vẫn yêu cầu API key/kết nối nếu muốn sử dụng.
 
-### Prerequisites
-- VS Code `^1.75.0`
-- Python 3.10+ with `fastapi`, `uvicorn`, and `python-docx` installed:
-  ```bash
-  pip install -r requirements.txt
-  ```
+## Cấu hình nâng cao
 
-### Running & Debugging in VS Code
-1. Open the project folder `d:\spotai_review\vscode-extension` in VS Code.
-2. Press `F5` (or click **Run and Debug** -> **Run Extension**).
-3. A new **Extension Development Host** window will open.
-4. In the new window:
-   - Open any Java (`.java`) or Python (`.py`) file.
-   - Highlight a block of code, right click, and select **"SpotAI: Review Selected Snippet"**.
-   - Or press `Ctrl+Shift+P` and type `SpotAI: Open Review Dashboard`.
+`spotai.serverUrl` mặc định để trống, nghĩa là sử dụng backend tích hợp. Có thể
+đặt một HTTP(S) origin, ví dụ `http://127.0.0.1:8000`, để kết nối một backend
+Web đã chạy sẵn. Extension kiểm tra endpoint `/api/health`.
 
----
+Nếu gặp lỗi khởi động, mở **View → Output → SpotAI Backend** để xem log rồi
+chạy lại **SpotAI: Open Review Dashboard**. Gói này hiện hỗ trợ Windows x64.
 
-## 📦 Packaging to `.vsix`
+## Build từ mã nguồn (chỉ dành cho nhóm phát triển)
 
-To bundle the extension into a single `.vsix` installer for distribution:
+Máy đóng gói cần Windows x64, Python 3.11+, Node.js/npm, các dependency trong
+`requirements.txt` và PyInstaller:
 
-1. Install `@vscode/vsce`:
-   ```bash
-   npm install -g @vscode/vsce
-   ```
-2. Navigate to `vscode-extension`:
-   ```bash
-   cd vscode-extension
-   ```
-3. Run package command:
-   ```bash
-   vsce package
-   ```
-4. Install the generated `.vsix` in VS Code via:
-   - Command Palette: `Extensions: Install from VSIX...`
-   - Or command line: `code --install-extension spotai-review-1.0.0.vsix`
+```powershell
+python -m pip install -r requirements.txt
+python -m pip install pyinstaller
+npm test --prefix vscode-extension
+npm run package --prefix vscode-extension
+```
 
----
-
-## ⚙️ Extension Settings
-
-This extension contributes the following settings:
-
-* `spotai.serverUrl`: The URL of the SpotAI review backend (default: `http://127.0.0.1:8000`). Change this to your deployed cloud URL (e.g. `https://spotai-review.onrender.com`) to run completely serverless on your machine.
-* `spotai.pythonPath`: Python executable to run when auto-starting the local backend (default: `python`).
-
----
-
-## 👥 Authors
-- **Group 4 - Software Engineering (ICTU)**:
-  - Dương Lê Thưởng
-  - Dương Quốc Toản
-
+Lệnh `package` tạo executable Python ở `vscode-extension/backend/` và VSIX ở
+`vscode-extension/spotai-review-1.1.2.vsix`. Máy nhận VSIX không cần các công
+cụ build. Thư mục backend và build trung gian được bỏ qua bởi Git.

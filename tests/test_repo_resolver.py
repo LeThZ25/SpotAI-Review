@@ -20,6 +20,7 @@ class TestRepoResolver(unittest.TestCase):
         self.assertFalse(RepoResolver.is_git_url("sample_repos/repo1_ecommerce_java"))
         self.assertFalse(RepoResolver.is_git_url("C:\\path\\to\\my_repo"))
         self.assertFalse(RepoResolver.is_git_url("/home/user/project"))
+        self.assertFalse(RepoResolver.is_git_url("C:\\repos\\project.git"))
         self.assertFalse(RepoResolver.is_git_url(""))
 
     def test_extract_repo_name(self):

@@ -72,7 +72,10 @@ class CloneDetector:
                 if pair_key in seen_pairs:
                     continue
 
-                sim = difflib.SequenceMatcher(None, b1.normalized_text, b2.normalized_text).ratio()
+                matcher = difflib.SequenceMatcher(None, b1.normalized_text, b2.normalized_text)
+                if matcher.real_quick_ratio() < self.similarity_threshold or matcher.quick_ratio() < self.similarity_threshold:
+                    continue
+                sim = matcher.ratio()
                 if sim >= self.similarity_threshold:
                     seen_pairs.add(pair_key)
                     clone_type = "Type-1 Exact Clone" if b1.raw_code.strip() == b2.raw_code.strip() else (
@@ -106,6 +109,13 @@ class CloneDetector:
 
     def _extract_candidate_blocks(self, repo_root: str) -> List[NormalizedBlock]:
         blocks: List[NormalizedBlock] = []
+        repo_root = os.path.realpath(repo_root)
+
+        def within_repo(path: str) -> bool:
+            try:
+                return os.path.commonpath((repo_root, os.path.realpath(path))) == repo_root
+            except ValueError:
+                return False
         java_method_re = re.compile(
             r"^\s*(?:public|protected|private|static|final|synchronized|\s)+[\w\<\>\[\],\s]+\s+(\w+)\s*\([^\)]*\)\s*(?:throws\s+[\w,\s]+)?\{"
         )
@@ -113,15 +123,20 @@ class CloneDetector:
         for root, dirs, files in os.walk(repo_root):
             dirs[:] = [
                 d for d in dirs
-                if d not in {".git", "__pycache__", "node_modules", "target", "build", ".venv", "venv", "env", ".idea", ".vscode", "dist", ".gradle"}
+                if d not in {".git", "__pycache__", "node_modules", "target", "build", ".venv", "venv", "env", ".idea", ".vscode", "dist", ".gradle"} and within_repo(os.path.join(root, d))
             ]
             for fname in sorted(files):
                 if not (fname.endswith(".java") or fname.endswith(".py")):
                     continue
                 full_path = os.path.join(root, fname)
+                if not within_repo(full_path):
+                    continue
                 rel_path = os.path.relpath(full_path, repo_root)
-                with open(full_path, "r", encoding="utf-8", errors="replace") as f:
-                    source = f.read()
+                try:
+                    with open(full_path, "r", encoding="utf-8", errors="replace") as f:
+                        source = f.read()
+                except OSError:
+                    continue
                 lines = source.splitlines()
 
                 if fname.endswith(".java"):

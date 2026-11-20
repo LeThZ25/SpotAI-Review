@@ -6,7 +6,7 @@ For every issue, produces:
   1. Why it matters (Engineering Rationale & Root Cause)
   2. Concrete Before/After Refactoring Code
   3. Stated Limitations & Edge Cases (as required by Topic 4 rubric)
-  4. Verified Cyclomatic Complexity After Refactoring (High-score extension)
+  4. Provider provenance (measured post-refactoring complexity requires separate verification)
 Supports:
   - Groq API (GROQ_API_KEY, default model: llama-3.3-70b-versatile)
   - Google Gemini API (GEMINI_API_KEY, default model: gemini-2.5-flash)
@@ -59,7 +59,7 @@ class AIRefactoringEngine:
         
         # Persistent local cache to save tokens across repeated runs
         default_cache = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".ai_refactor_cache.json"))
-        self.cache_file = cache_file or default_cache
+        self.cache_file = cache_file or os.environ.get("SPOTAI_CACHE_FILE") or default_cache
         self._cache: Dict[str, dict] = self._load_cache()
 
     def _load_cache(self) -> Dict[str, dict]:
@@ -81,6 +81,7 @@ class AIRefactoringEngine:
             "limitations": issue.ai_limitations,
             "confidence": issue.ai_confidence,
             "verified_cc_after": issue.verified_cc_after,
+            "provider": issue.ai_provider,
         }
         try:
             with open(self.cache_file, "w", encoding="utf-8") as f:
@@ -100,7 +101,10 @@ class AIRefactoringEngine:
             issue.ai_refactored_code = entry.get("refactored_code")
             issue.ai_limitations = entry.get("limitations")
             issue.ai_confidence = float(entry.get("confidence", 0.95))
-            issue.verified_cc_after = entry.get("verified_cc_after") or self._estimate_cc_after(issue)
+            # Older cache values were calculated from a fixed multiplier, not measured.
+            issue.verified_cc_after = None
+            original_provider = entry.get("provider") or "unknown source"
+            issue.ai_provider = f"Cached suggestion ({original_provider})"
             return True
         return False
 
@@ -231,7 +235,7 @@ class AIRefactoringEngine:
                     limitations = f"Limitation: {limitations}"
                 issue.ai_limitations = limitations
                 issue.ai_confidence = float(parsed.get("confidence", 0.90))
-                issue.verified_cc_after = self._estimate_cc_after(issue)
+                issue.ai_provider = f"Groq Cloud LLM ({groq_model})"
                 return
         except urllib.error.HTTPError as exc:
             err_msg = exc.read().decode("utf-8", errors="replace")[:120]
@@ -271,7 +275,7 @@ class AIRefactoringEngine:
                     limitations = f"Limitation: {limitations}"
                 issue.ai_limitations = limitations
                 issue.ai_confidence = float(parsed.get("confidence", 0.88))
-                issue.verified_cc_after = self._estimate_cc_after(issue)
+                issue.ai_provider = f"Google Gemini API ({gem_model})"
                 return
         except Exception:
             self._enrich_via_knowledge_engine(issue)
@@ -308,7 +312,7 @@ class AIRefactoringEngine:
                     limitations = f"Limitation: {limitations}"
                 issue.ai_limitations = limitations
                 issue.ai_confidence = float(parsed.get("confidence", 0.88))
-                issue.verified_cc_after = self._estimate_cc_after(issue)
+                issue.ai_provider = f"OpenAI API ({oai_model})"
                 return
         except Exception:
             self._enrich_via_knowledge_engine(issue)
@@ -491,10 +495,5 @@ class AIRefactoringEngine:
             )
             issue.ai_confidence = 0.86
 
-        issue.verified_cc_after = self._estimate_cc_after(issue)
-
-    @staticmethod
-    def _estimate_cc_after(issue: CodeIssue) -> int:
-        if not issue.cyclomatic_complexity:
-            return 2
-        return max(2, int(round(issue.cyclomatic_complexity * 0.35)))
+        issue.ai_provider = "Offline heuristic (illustrative suggestion)"
+        issue.verified_cc_after = None

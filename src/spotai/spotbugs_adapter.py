@@ -20,23 +20,52 @@ PRIORITY_TO_SEVERITY = {
 
 class SpotBugsAdapter:
     def __init__(self, repo_root: str, spotbugs_xml_path: Optional[str] = None, spotbugs_bin: Optional[str] = None):
-        self.repo_root = os.path.abspath(repo_root)
+        self.repo_root = os.path.realpath(repo_root)
         self.spotbugs_xml_path = spotbugs_xml_path
         self.spotbugs_bin = spotbugs_bin
+        self.status = "not_available"
+
+    def _within_repo(self, path: str) -> bool:
+        try:
+            return os.path.commonpath((self.repo_root, os.path.realpath(path))) == self.repo_root
+        except ValueError:
+            return False
 
     def run_or_load(self) -> List[CodeIssue]:
         """
         If a SpotBugs binary and compiled target/classes exist, can invoke SpotBugs CLI directly;
         otherwise parses existing spotbugsXml.xml in the repository or specified path.
         """
-        xml_path = self._resolve_xml_path()
-        if not xml_path or not os.path.exists(xml_path):
+        try:
+            xml_path = self._resolve_xml_path()
+        except ValueError as exc:
+            self.status = "error"
+            return [CodeIssue(
+                issue_id="SB-ERROR", source_engine="SpotBugs", category="ANALYSIS",
+                smell_or_bug_type="ANALYSIS_ERROR", severity="HIGH",
+                file_path="spotbugsXml.xml", start_line=1, end_line=1,
+                entity_name="SpotBugs XML", message=str(exc),
+            )]
+        if not xml_path:
             return []
-        return self.parse_spotbugs_xml(xml_path)
+        try:
+            result = self.parse_spotbugs_xml(xml_path)
+            self.status = "loaded"
+            return result
+        except (ET.ParseError, OSError, ValueError) as exc:
+            self.status = "error"
+            return [CodeIssue(
+                issue_id="SB-ERROR", source_engine="SpotBugs", category="ANALYSIS",
+                smell_or_bug_type="ANALYSIS_ERROR", severity="HIGH",
+                file_path=os.path.relpath(xml_path, self.repo_root), start_line=1, end_line=1,
+                entity_name="SpotBugs XML", message=f"Unable to parse SpotBugs report: {exc}",
+            )]
 
     def _resolve_xml_path(self) -> Optional[str]:
-        if self.spotbugs_xml_path and os.path.exists(self.spotbugs_xml_path):
-            return self.spotbugs_xml_path
+        if self.spotbugs_xml_path:
+            if not self._within_repo(self.spotbugs_xml_path):
+                raise ValueError("SpotBugs XML must be inside repository")
+            return self.spotbugs_xml_path if os.path.isfile(self.spotbugs_xml_path) else None
         # Check standard Maven/Gradle SpotBugs output paths or repo root
         candidates = [
             os.path.join(self.repo_root, "spotbugsXml.xml"),
@@ -44,11 +73,13 @@ class SpotBugsAdapter:
             os.path.join(self.repo_root, "build", "reports", "spotbugs", "main.xml"),
         ]
         for c in candidates:
-            if os.path.exists(c):
+            if self._within_repo(c) and os.path.isfile(c):
                 return c
         return None
 
     def parse_spotbugs_xml(self, xml_path: str) -> List[CodeIssue]:
+        if not self._within_repo(xml_path):
+            raise ValueError("SpotBugs XML must be inside repository")
         issues: List[CodeIssue] = []
         tree = ET.parse(xml_path)
         root = tree.getroot()
@@ -80,8 +111,11 @@ class SpotBugsAdapter:
             end_line = 1
             if source_line_el is not None:
                 rel_source = source_line_el.attrib.get("sourcepath", rel_source)
-                start_line = int(source_line_el.attrib.get("start", "1"))
-                end_line = int(source_line_el.attrib.get("end", str(start_line)))
+                try:
+                    start_line = max(1, int(source_line_el.attrib.get("start", "1")))
+                    end_line = max(start_line, int(source_line_el.attrib.get("end", str(start_line))))
+                except ValueError:
+                    start_line = end_line = 1
 
             entity_name = ""
             if class_el is not None:
@@ -110,6 +144,10 @@ class SpotBugsAdapter:
         return issues
 
     def _extract_source_snippet(self, rel_source: str, start_line: int, end_line: int):
+        if (os.path.isabs(rel_source) or "\\" in rel_source
+                or any(part == ".." for part in rel_source.split("/"))
+                or ":" in rel_source):
+            return "Unknown.java", ""
         candidates = [
             os.path.join(self.repo_root, rel_source),
             os.path.join(self.repo_root, "src", "main", "java", rel_source),
@@ -117,14 +155,18 @@ class SpotBugsAdapter:
         ]
         # Also search by basename if package path differs
         basename = os.path.basename(rel_source)
-        for root_dir, _, files in os.walk(self.repo_root):
+        for root_dir, dirs, files in os.walk(self.repo_root):
+            dirs[:] = [d for d in dirs if self._within_repo(os.path.join(root_dir, d))]
             if basename in files:
                 candidates.append(os.path.join(root_dir, basename))
 
         for path in candidates:
-            if os.path.exists(path) and os.path.isfile(path):
-                with open(path, "r", encoding="utf-8", errors="replace") as f:
-                    lines = f.readlines()
+            if self._within_repo(path) and os.path.isfile(path):
+                try:
+                    with open(path, "r", encoding="utf-8", errors="replace") as f:
+                        lines = f.readlines()
+                except OSError:
+                    continue
                 s = max(1, start_line - 3)
                 e = min(len(lines), max(end_line + 4, start_line + 8))
                 snippet = "".join(lines[s - 1 : e]).rstrip()

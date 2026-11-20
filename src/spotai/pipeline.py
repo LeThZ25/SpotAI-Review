@@ -1,7 +1,7 @@
 """
 Main Analysis Pipeline Orchestrator
 Supports running by project milestone (--milestone 1|2|3|4) so the code execution matches
-Group 4's progress reports from Week 4 through Final Submission.
+Supports progressive code quality analysis through the final submission.
 """
 from collections import Counter
 from typing import Optional
@@ -67,8 +67,9 @@ class SpotAIPipeline:
             else 85.0
         )
 
-        high_count = sum(1 for i in all_issues if i.severity == "HIGH")
-        quality_gate_passed = high_count == 0 and max_cc_val <= self.max_cc
+        high_count = sum(1 for i in all_issues if i.severity in ("HIGH", "CRITICAL"))
+        analysis_valid = files_scanned > 0 and not any(i.smell_or_bug_type == "ANALYSIS_ERROR" for i in all_issues)
+        quality_gate_passed = analysis_valid and high_count == 0 and max_cc_val <= self.max_cc
 
         by_type = dict(Counter(i.smell_or_bug_type for i in all_issues))
         by_engine = dict(Counter(i.source_engine for i in all_issues))
@@ -86,4 +87,10 @@ class SpotAIPipeline:
             method_metrics=method_metrics,
             summary_by_type=by_type,
             summary_by_engine=by_engine,
+            engine_status={
+                "AST-Smell": "completed" if analysis_valid else "invalid_or_empty",
+                "SpotBugs": sb_adapter.status,
+                "Clone-Detector": "completed" if self.milestone >= 2 else "disabled",
+                "AI-Refactoring": "completed" if self.milestone >= 2 else "disabled",
+            },
         )

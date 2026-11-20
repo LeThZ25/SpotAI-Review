@@ -170,6 +170,7 @@ class SnippetAnalyzer:
                 "ai_explanation": i.ai_explanation,
                 "ai_refactored_code": i.ai_refactored_code,
                 "ai_limitations": i.ai_limitations,
+                "ai_provider": i.ai_provider,
                 "verified_cc_after": i.verified_cc_after,
             })
 

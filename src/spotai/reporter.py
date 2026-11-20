@@ -1,6 +1,6 @@
 """
 Module 6: Multi-Format Report Exporter (SARIF v2.1.0, Interactive HTML Dashboard, Markdown, JSON)
-Owner: Duong Le Thuong & Duong Quoc Toan
+Authors: Duong Le Thuong, Duong Quoc Toan & Nguyen Thanh Trung
 """
 import html
 import json
@@ -21,7 +21,7 @@ class ReportExporter:
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         results = []
         for issue in report.issues:
-            level = "error" if issue.severity == "HIGH" else ("warning" if issue.severity == "MEDIUM" else "note")
+            level = "error" if issue.severity in {"HIGH", "CRITICAL"} else ("warning" if issue.severity == "MEDIUM" else "note")
             results.append({
                 "ruleId": issue.smell_or_bug_type.replace(" ", "_").upper(),
                 "level": level,
@@ -42,9 +42,9 @@ class ReportExporter:
             "runs": [{
                 "tool": {
                     "driver": {
-                        "name": "SpotAI-Review (Group 4)",
+                        "name": "SpotAI-Review",
                         "version": "1.0.0",
-                        "informationUri": "https://github.com/group4-se/spotai-review",
+                        "informationUri": "https://github.com/LeThZ25/SpotAI-Review",
                     }
                 },
                 "results": results,
@@ -58,7 +58,7 @@ class ReportExporter:
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         rows_html = []
         for issue in report.issues:
-            badge_color = "#dc2626" if issue.severity == "HIGH" else ("#d97706" if issue.severity == "MEDIUM" else "#2563eb")
+            badge_color = "#dc2626" if issue.severity in {"HIGH", "CRITICAL"} else ("#d97706" if issue.severity == "MEDIUM" else "#2563eb")
             rows_html.append(f"""
             <tr>
               <td><code>{html.escape(issue.issue_id)}</code></td>
@@ -69,11 +69,12 @@ class ReportExporter:
               <td>
                 <p style="margin:0 0 6px 0;">{html.escape(issue.message)}</p>
                 <details>
-                  <summary style="cursor:pointer;color:#1d4ed8;font-weight:600;">View AI Refactoring & Limitations</summary>
-                  <div style="margin-top:8px;padding:10px;background:#f8fafc;border-left:3px solid #1d4ed8;">
+                  <summary>View AI Refactoring & Limitations</summary>
+                  <div class="ai-details">
                     <p><strong>Rationale:</strong> {html.escape(issue.ai_explanation or '')}</p>
-                    <pre style="background:#0f172a;color:#f8fafc;padding:10px;border-radius:6px;overflow-x:auto;"><code>{html.escape(issue.ai_refactored_code or '')}</code></pre>
-                    <p style="color:#475569;font-size:0.9em;margin-bottom:0;"><strong>Stated Limitations:</strong> {html.escape(issue.ai_limitations or '')}</p>
+                    <p><strong>Provider:</strong> {html.escape(issue.ai_provider or 'Unavailable')}</p>
+                    <pre><code>{html.escape(issue.ai_refactored_code or '')}</code></pre>
+                    <p class="ai-limitations"><strong>Stated Limitations:</strong> {html.escape(issue.ai_limitations or '')}</p>
                   </div>
                 </details>
               </td>
@@ -86,26 +87,41 @@ class ReportExporter:
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>SpotAI-Review Dashboard — {html.escape(report.repository_name)}</title>
   <style>
-    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; background: #f1f5f9; color: #0f172a; }}
-    header {{ background: #1e293b; color: #fff; padding: 20px 32px; display: flex; justify-content: space-between; align-items: center; }}
-    .container {{ max-width: 1280px; margin: 24px auto; padding: 0 24px; }}
-    .cards {{ display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-bottom: 24px; }}
-    .card {{ background: #fff; padding: 18px; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }}
-    .card h4 {{ margin: 0 0 8px 0; font-size: 0.85rem; color: #64748b; text-transform: uppercase; }}
-    .card .val {{ font-size: 1.65rem; font-weight: 700; color: #0f172a; }}
-    table {{ width: 100%; border-collapse: collapse; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }}
-    th {{ background: #1e293b; color: #fff; text-align: left; padding: 12px 14px; font-size: 0.88rem; }}
-    td {{ padding: 12px 14px; border-bottom: 1px solid #e2e8f0; vertical-align: top; font-size: 0.9rem; }}
+    :root {{ color-scheme: dark; --bg: #090f1d; --surface: #111d2f; --line: #2c3d55; --text: #f6f9ff; --muted: #b1c1d7; --accent: #67d6f6; }}
+    * {{ box-sizing: border-box; }}
+    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; background: radial-gradient(ellipse at top left, #152f4a, var(--bg) 58%); color: var(--text); line-height: 1.6; }}
+    header {{ background: #0b1626; color: #fff; padding: 22px clamp(16px, 3vw, 36px); display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 18px; border-bottom: 1px solid var(--line); }}
+    header h2 {{ font-size: clamp(1.15rem, 1rem + 1vw, 1.65rem); }}
+    header small {{ color: var(--muted); overflow-wrap: anywhere; }}
+    .container {{ max-width: 1280px; margin: 28px auto; padding: 0 clamp(12px, 3vw, 28px); }}
+    .cards {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 14px; margin-bottom: 24px; }}
+    .card {{ background: var(--surface); padding: 18px; border-radius: 12px; border: 1px solid var(--line); min-width: 0; }}
+    .card h4 {{ margin: 0 0 8px 0; font-size: 0.83rem; color: var(--muted); text-transform: uppercase; }}
+    .card .val {{ font-size: 1.55rem; font-weight: 700; color: var(--text); overflow-wrap: anywhere; }}
+    .table-scroll {{ overflow-x: auto; border-radius: 12px; border: 1px solid var(--line); }}
+    table {{ width: 100%; min-width: 850px; border-collapse: collapse; background: var(--surface); }}
+    th {{ background: #1c3049; color: #fff; text-align: left; padding: 12px 14px; font-size: 0.85rem; }}
+    td {{ padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: top; font-size: 0.88rem; overflow-wrap: anywhere; }}
+    td code {{ overflow-wrap: anywhere; }}
+    td pre {{ white-space: pre-wrap; overflow-wrap: anywhere; max-width: 52ch; }}
+    td small {{ color: var(--muted); }}
+    details summary {{ cursor: pointer; color: var(--accent); font-weight: 600; }}
+    .ai-details {{ margin-top: 8px; padding: 12px; background: #0b1626; border-left: 3px solid var(--accent); border-radius: 6px; }}
+    .ai-details pre {{ background: #07101e; color: var(--text); padding: 10px; border-radius: 6px; overflow-x: auto; }}
+    .ai-limitations {{ color: var(--muted); font-size: .9em; margin-bottom: 0; }}
     .badge {{ color: #fff; padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 700; }}
+    :focus-visible {{ outline: 3px solid var(--accent); outline-offset: 3px; }}
+    @media (max-width: 600px) {{ .cards {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }} header {{ align-items: flex-start; }} }}
   </style>
 </head>
 <body>
   <header>
     <div>
       <h2 style="margin:0;">SpotAI-Review: Hybrid Static Code Analysis & AI Review</h2>
-      <small>Group 4: Duong Le Thuong (DTC235340030) & Duong Quoc Toan (DTC235210055) | Target: {html.escape(report.repository_name)}</small>
+      <small>Target: {html.escape(report.repository_name)}</small>
     </div>
     <div>
       <span class="badge" style="background:{gate_bg};font-size:0.95rem;padding:8px 14px;">Quality Gate: {gate_text}</span>
@@ -119,6 +135,7 @@ class ReportExporter:
       <div class="card"><h4>Avg / Max CC</h4><div class="val">{report.average_cc:.1f} / {report.max_cc}</div></div>
       <div class="card"><h4>Maintainability (MI)</h4><div class="val">{report.average_mi:.1f}</div></div>
     </div>
+    <div class="table-scroll" role="region" aria-label="Danh sách vấn đề phân tích" tabindex="0">
     <table>
       <thead>
         <tr>
@@ -131,9 +148,10 @@ class ReportExporter:
         </tr>
       </thead>
       <tbody>
-        {''.join(rows_html)}
+        {''.join(rows_html) or '<tr><td colspan="6">No code issues detected.</td></tr>'}
       </tbody>
     </table>
+    </div>
   </div>
 </body>
 </html>"""

@@ -3,18 +3,28 @@ import sys
 import io
 import zipfile
 import unittest
+import tempfile
+from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from spotai.snippet_analyzer import SnippetAnalyzer
-from spotai.web_server import app
-from fastapi.testclient import TestClient
+try:
+    from fastapi.testclient import TestClient
+    from spotai.web_server import app
+    from spotai.web_security import MAX_EXTRACTED_BYTES, MAX_UPLOAD_BYTES, validate_github_https
+    WEB_TEST_MISSING_DEPENDENCY = None
+except ModuleNotFoundError as error:
+    if error.name not in {"fastapi", "httpx", "multipart", "python_multipart"}:
+        raise
+    WEB_TEST_MISSING_DEPENDENCY = str(error)
+    TestClient = None
+    app = None
 
 
-class TestWebServerAndSnippetAnalyzer(unittest.TestCase):
+class TestSnippetAnalyzer(unittest.TestCase):
     def setUp(self):
         self.analyzer = SnippetAnalyzer()
-        self.client = TestClient(app)
 
     def test_snippet_empty_code(self):
         res = self.analyzer.analyze_snippet("", "python")
@@ -57,6 +67,11 @@ class TestWebServerAndSnippetAnalyzer(unittest.TestCase):
         self.assertGreaterEqual(res["summary"]["issues_count"], 1)
         smell_types = [i["type"] for i in res["issues"]]
         self.assertIn("Long Parameter List", smell_types)
+
+@unittest.skipIf(TestClient is None, "Web/API dependency unavailable: " + str(WEB_TEST_MISSING_DEPENDENCY))
+class TestWebServerAPI(unittest.TestCase):
+    def setUp(self):
+        self.client = TestClient(app)
 
     def test_api_health(self):
         res = self.client.get("/api/health")
@@ -132,6 +147,60 @@ class TestWebServerAndSnippetAnalyzer(unittest.TestCase):
         data = res.json()
         self.assertEqual(data["status"], "success")
         self.assertEqual(data["detected_files"]["java"], 1)
+
+    def test_github_url_restrictions(self):
+        self.assertTrue(validate_github_https("https://github.com/owner/repo.git"))
+        for value in ("http://github.com/owner/repo", "https://evil.test/owner/repo",
+                      "https://github.com/owner/repo?x=1", "https://github.com:broken/owner/repo",
+                      "https://github.com/owner/repo/tree/main"):
+            self.assertFalse(validate_github_https(value), value)
+
+    def test_reject_outside_repository(self):
+        with tempfile.TemporaryDirectory() as directory:
+            res = self.client.post("/api/analyze-repo", json={"repo": directory})
+            self.assertEqual(res.status_code, 403)
+
+    def test_reject_invalid_github_url(self):
+        res = self.client.post("/api/analyze-repo", json={"repo": "https://evil.test/owner/repo"})
+        self.assertEqual(res.status_code, 400)
+
+    def test_dashboard_path_traversal(self):
+        res = self.client.get("/dashboard/%2e%2e")
+        self.assertIn(res.status_code, (404, 422))
+
+    def test_reject_zip_traversal(self):
+        content = io.BytesIO()
+        with zipfile.ZipFile(content, "w") as archive:
+            archive.writestr("../escape.py", "print('unsafe')")
+        res = self.client.post("/api/upload-and-analyze",
+                               files=[("files", ("bad.zip", content.getvalue(), "application/zip"))])
+        self.assertEqual(res.status_code, 400)
+
+    def test_reject_zip_bomb_metadata(self):
+        content = io.BytesIO()
+        with zipfile.ZipFile(content, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("huge.py", b"x" * (MAX_EXTRACTED_BYTES + 1))
+        res = self.client.post("/api/upload-and-analyze",
+                               files=[("files", ("large.zip", content.getvalue(), "application/zip"))])
+        self.assertEqual(res.status_code, 413)
+
+    def test_reject_oversized_upload(self):
+        res = self.client.post("/api/upload-and-analyze",
+                               files=[("files", ("oversize.py", b"x" * (MAX_UPLOAD_BYTES + 1), "text/plain"))])
+        self.assertEqual(res.status_code, 413)
+
+    def test_repository_dashboard_contains_escaped_code(self):
+        with tempfile.TemporaryDirectory(dir=os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))) as directory:
+            Path(directory, "unsafe.py").write_text(
+                "def test():\n    value = '<img src=x onerror=alert(1)>'\n    return value\n",
+                encoding="utf-8",
+            )
+            res = self.client.post("/api/analyze-repo", json={"repo": directory, "milestone": 1})
+            self.assertEqual(res.status_code, 200)
+            if res.json()["report"]["issues"]:
+                dashboard = self.client.get(res.json()["dashboard_url"])
+                self.assertEqual(dashboard.status_code, 200)
+                self.assertNotIn("<img src=x onerror=alert(1)>", dashboard.text)
 
 
 if __name__ == "__main__":

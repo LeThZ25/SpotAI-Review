@@ -2,9 +2,11 @@
   "name": "spotai-review",
   "displayName": "SpotAI-Review Code Assistant",
   "description": "Static Code Analysis, Complexity Metrics & AI-Powered Refactoring for Java & Python",
-  "version": "1.0.0",
+  "version": "1.1.2",
   "publisher": "group4-ictu",
-  "author": "Duong Le Thuong & Duong Quoc Toan (ICTU Group 4)",
+  "os": ["win32"],
+  "cpu": ["x64"],
+  "author": "Duong Le Thuong, Duong Quoc Toan & Nguyen Thanh Trung",
   "engines": {
     "vscode": "^1.75.0"
   },
@@ -15,8 +17,10 @@
   ],
   "main": "./extension.js",
   "activationEvents": [
-    "onLanguage:python",
-    "onLanguage:java"
+    "onCommand:spotai.openDashboard",
+    "onCommand:spotai.reviewSelection",
+    "onCommand:spotai.reviewCurrentFile",
+    "onCommand:spotai.startServer"
   ],
   "contributes": {
     "commands": [
@@ -80,20 +84,17 @@
       "properties": {
         "spotai.serverUrl": {
           "type": "string",
-          "default": "http://127.0.0.1:8000",
-          "description": "Backend API endpoint URL (Local FastAPI server or Cloud Render URL)"
-        },
-        "spotai.pythonPath": {
-          "type": "string",
-          "default": "python",
-          "description": "Path to Python executable used to launch the SpotAI backend server"
+          "default": "",
+          "description": "Optional existing SpotAI HTTP server origin. Leave blank to start the included backend automatically."
         }
       }
     }
   },
   "scripts": {
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./"
+    "compile": "node -e \"require('fs').copyFileSync('src/extension.ts','extension.js')\"",
+    "check": "npm run compile && node --check extension.js",
+    "test": "npm run check && node test/runtime.test.js",
+    "package": "npm run check && python ../scripts/build_backend.py && python ../scripts/build_vsix.py"
   },
   "devDependencies": {
     "@types/node": "^18.x",

@@ -12,3 +12,8 @@ htmlcov/
 node_modules/
 *.vsix
 .vscode-test/
+vscode-extension/backend/
+vscode-extension/.build/
+.npm-temp-cache/
+.npm-guidance-cache/
+.venv/

@@ -25,6 +25,7 @@ class CodeIssue:
     ai_limitations: Optional[str] = None
     ai_confidence: Optional[float] = None
     verified_cc_after: Optional[int] = None
+    ai_provider: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -59,6 +60,7 @@ class AnalysisReport:
     method_metrics: List[MethodMetric] = field(default_factory=list)
     summary_by_type: Dict[str, int] = field(default_factory=dict)
     summary_by_engine: Dict[str, int] = field(default_factory=dict)
+    engine_status: Dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -72,6 +74,7 @@ class AnalysisReport:
             "quality_gate_passed": self.quality_gate_passed,
             "summary_by_type": self.summary_by_type,
             "summary_by_engine": self.summary_by_engine,
+            "engine_status": self.engine_status,
             "issues": [i.to_dict() for i in self.issues],
             "method_metrics": [asdict(m) for m in self.method_metrics],
         }
