@@ -39,6 +39,8 @@ Kiểm thử mock của extension xác nhận bốn lệnh `spotai.openDashboard
 
 **Bản 1.1.2 đã được xây dựng và cài đặt thành công trên VS Code.** Kiểm thử mock extension và 52 bài Python tiếp tục PASS sau khi cập nhật. Kiểm thử Extension Host thực nêu trên được thực hiện với bản 1.1.1. Chưa chạy lại toàn bộ kịch bản Extension Host thật trên bản 1.1.2.
 
+**Lưu trữ sau kiểm thử:** Sau khi ghi nhận kết quả, các log, ảnh chụp và profile thử nghiệm trong `.vscode-test/`, các bản VSIX cũ và báo cáo thử dư thừa đã được xóa để giảm dung lượng. Báo cáo này lưu lại kết quả đã quan sát. Mã kiểm thử tự động chính vẫn nằm trong `tests/` và `vscode-extension/test/`. Bản cài được giữ và phát hành kèm mã nguồn là `spotai-review-1.1.2.vsix`.
+
 **Phạm vi còn cần kiểm tra trong buổi demo:** quan sát trực quan nội dung iframe của Dashboard và chi tiết kết quả phân tích được render từ editor. Kịch bản clone URL GitHub thực chưa được thử với mạng Internet bên ngoài. Đề xuất AI từ dịch vụ cloud phụ thuộc API key và kết nối tại thời điểm demo.
 
 ## 2. Benchmark thực đo trên repository mẫu
