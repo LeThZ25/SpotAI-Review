@@ -61,9 +61,10 @@ class AnalysisReport:
     summary_by_type: Dict[str, int] = field(default_factory=dict)
     summary_by_engine: Dict[str, int] = field(default_factory=dict)
     engine_status: Dict[str, str] = field(default_factory=dict)
+    pr_gate: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        data = {
             "repository_name": self.repository_name,
             "milestone_stage": self.milestone_stage,
             "files_scanned": self.files_scanned,
@@ -78,3 +79,6 @@ class AnalysisReport:
             "issues": [i.to_dict() for i in self.issues],
             "method_metrics": [asdict(m) for m in self.method_metrics],
         }
+        if self.pr_gate is not None:
+            data["pr_gate"] = self.pr_gate
+        return data
