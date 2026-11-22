@@ -23,6 +23,9 @@ class GitHubPRReviewBot:
     BOT_LOGIN = "github-actions[bot]"
     API_VERSION = "2022-11-28"
     REQUEST_TIMEOUT_SECONDS = 20
+    FINDING_TEXT_LIMIT = 800
+    SUGGESTION_CODE_LIMIT = 1200
+    LIMITATIONS_TEXT_LIMIT = 450
 
     def __init__(self):
         self.github_token = os.environ.get("GITHUB_TOKEN", "")
@@ -91,8 +94,8 @@ class GitHubPRReviewBot:
             ])
         return lines
 
-    @staticmethod
-    def _issue_markdown_lines(issue):
+    @classmethod
+    def _issue_markdown_lines(cls, issue):
         cc_badge = (
             f" | **CC Reduction:** `{issue.cyclomatic_complexity} -> {issue.verified_cc_after}`"
             if issue.cyclomatic_complexity and issue.verified_cc_after else ""
@@ -100,13 +103,14 @@ class GitHubPRReviewBot:
         return [
             f"#### [{issue.severity}] `{issue.issue_id}` — {issue.smell_or_bug_type} (`{issue.source_engine}`)",
             f"- **Location:** `{issue.file_path}:{issue.start_line}-{issue.end_line}` in `{issue.entity_name}`{cc_badge}",
-            f"- **Finding:** {issue.message[:800]}",
-            f"- **AI Engineering Rationale:** {(issue.ai_explanation or 'N/A')[:800]}",
+            f"- **Finding:** {issue.message[:cls.FINDING_TEXT_LIMIT]}",
+            f"- **AI Engineering Rationale:** {(issue.ai_explanation or 'N/A')[:cls.FINDING_TEXT_LIMIT]}",
             "- **AI Suggested Refactoring:**",
             "```java" if issue.file_path.endswith(".java") else "```python",
-            (issue.ai_refactored_code or "// No suggestion generated")[:1200],
+            (issue.ai_refactored_code or "// No suggestion generated")[:cls.SUGGESTION_CODE_LIMIT],
             "```",
-            f"- **Stated Limitations & Edge Cases:** _{(issue.ai_limitations or 'Verify with unit tests before merging.')[:450]}_",
+            "- **Stated Limitations & Edge Cases:** "
+            f"_{(issue.ai_limitations or 'Verify with unit tests before merging.')[:cls.LIMITATIONS_TEXT_LIMIT]}_",
             "",
         ]
 

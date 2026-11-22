@@ -42,7 +42,7 @@ def sample_report(passed=True):
     )
 
 
-class TestGitHubPRPublishing(unittest.TestCase):
+class GitHubPREventTestCase(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -56,18 +56,8 @@ class TestGitHubPRPublishing(unittest.TestCase):
         self.env.start()
         self.addCleanup(self.env.stop)
 
-    @staticmethod
-    def response(body):
-        return io.BytesIO(json.dumps(body).encode("utf-8"))
 
-    def fake_comments_api(self, requests, comments, result_id):
-        def fake_open(request, timeout):
-            requests.append(request)
-            if request.get_method() == "GET":
-                return self.response(comments)
-            return self.response({"id": result_id})
-        return fake_open
-
+class TestGitHubPRSummary(unittest.TestCase):
     def test_comment_distinguishes_gate_conditions_from_informational_metrics(self):
         comment = GitHubPRReviewBot().build_pr_comment_markdown(sample_report(False))
         self.assertIn("| **HIGH/CRITICAL Issues** | **1** | 0 required for PASS |", comment)
@@ -89,6 +79,20 @@ class TestGitHubPRPublishing(unittest.TestCase):
         self.assertIn("**New HIGH/CRITICAL Issues** | **0** | 0 required for PR PASS", comment)
         self.assertIn("**New/Worsened Complexity Violations** | **0**", comment)
         self.assertIn("`previous-commit`", comment)
+
+
+class TestGitHubPRPublishing(GitHubPREventTestCase):
+    @staticmethod
+    def response(body):
+        return io.BytesIO(json.dumps(body).encode("utf-8"))
+
+    def fake_comments_api(self, requests, comments, result_id):
+        def fake_open(request, timeout):
+            requests.append(request)
+            if request.get_method() == "GET":
+                return self.response(comments)
+            return self.response({"id": result_id})
+        return fake_open
 
     def test_creates_comment_if_no_bot_summary_exists(self):
         calls = []
@@ -162,6 +166,8 @@ class TestGitHubPRPublishing(unittest.TestCase):
                     self.assertFalse(GitHubPRReviewBot().post_to_github_if_configured(sample_report(), self.payload_path))
                     api.assert_not_called()
 
+
+class TestGitHubPRCLI(GitHubPREventTestCase):
     def test_cli_gate_runs_after_successful_publish(self):
         output = str(Path(self.temp.name, "cli-reports"))
         args = ["spotai_cli.py", "--repo", str(ROOT / "sample_repos" / "repo1_ecommerce_java"),
