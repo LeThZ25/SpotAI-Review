@@ -28,6 +28,7 @@ class GitHubPRReviewBot:
 
     def build_pr_comment_markdown(self, report: AnalysisReport) -> str:
         gate_badge = "PASSED" if report.quality_gate_passed else "FAILED (Action Required)"
+        high_or_critical = sum(issue.severity in ("HIGH", "CRITICAL") for issue in report.issues)
         lines = [
             self.COMMENT_MARKER,
             f"## SpotAI-Review: Automated Static Analysis & AI Refactoring Report",
@@ -38,10 +39,11 @@ class GitHubPRReviewBot:
             "| :--- | :---: | :---: |",
             f"| **Files Scanned** | {report.files_scanned} | Checked-out repository |",
             f"| **Total Lines of Code (LOC)** | {report.total_loc} | - |",
-            f"| **Total Issues Detected** | **{len(report.issues)}** | 0 HIGH severity issues |",
-            f"| **Average Cyclomatic Complexity (CC)** | {report.average_cc:.2f} | <= 10.0 |",
+            f"| **Total Issues Detected** | **{len(report.issues)}** | Informational |",
+            f"| **HIGH/CRITICAL Issues** | **{high_or_critical}** | 0 required for PASS |",
+            f"| **Average Cyclomatic Complexity (CC)** | {report.average_cc:.2f} | Informational |",
             f"| **Max Method Cyclomatic Complexity** | {report.max_cc} | <= 10 |",
-            f"| **Average Maintainability Index (MI)** | {report.average_mi:.1f} / 100 | >= 65.0 |",
+            f"| **Average Maintainability Index (MI)** | {report.average_mi:.1f} / 100 | Informational |",
             "",
             "### 2. Issues Breakdown by Detection Engine",
             "| Engine | Count | Primary Focus |",

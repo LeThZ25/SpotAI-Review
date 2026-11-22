@@ -55,6 +55,13 @@ class TestGitHubPRPublishing(unittest.TestCase):
     def response(body):
         return io.BytesIO(json.dumps(body).encode("utf-8"))
 
+    def test_comment_distinguishes_gate_conditions_from_informational_metrics(self):
+        comment = GitHubPRReviewBot().build_pr_comment_markdown(sample_report(False))
+        self.assertIn("| **HIGH/CRITICAL Issues** | **1** | 0 required for PASS |", comment)
+        self.assertIn("| **Max Method Cyclomatic Complexity** | 5 | <= 10 |", comment)
+        self.assertIn("| **Average Maintainability Index (MI)** | 75.0 / 100 | Informational |", comment)
+        self.assertIn("| **Average Cyclomatic Complexity (CC)** | 2.00 | Informational |", comment)
+
     def test_creates_comment_if_no_bot_summary_exists(self):
         calls = []
 
