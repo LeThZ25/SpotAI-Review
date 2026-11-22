@@ -18,12 +18,16 @@ import spotai_cli
 from spotai.github_pr_bot import GitHubPRPublishError, GitHubPRReviewBot
 from spotai.models import AnalysisReport, CodeIssue
 
+SAMPLE_REPORT_LOC = 50
+SAMPLE_MAINTAINABILITY = 75.0
+EXISTING_BOT_COMMENT_ID = 77
+
 
 def sample_report(passed=True):
     issues = [] if passed else [
         CodeIssue(
             "AST-001", "AST-Smell", "CODE_SMELL", "Long Method", "HIGH",
-            "src/example.py", 1, 50, "example", "Method is too long",
+            "src/example.py", 1, SAMPLE_REPORT_LOC, "example", "Method is too long",
             ai_explanation="Split the function into smaller parts.",
             ai_refactored_code="def example():\n    return 1",
             ai_limitations="Confirm behavior with tests.",
@@ -31,7 +35,8 @@ def sample_report(passed=True):
     ]
     return AnalysisReport(
         repository_name="sample", milestone_stage="Milestone-4", files_scanned=1,
-        total_loc=50, average_cc=2.0, max_cc=5, average_mi=75.0,
+        total_loc=SAMPLE_REPORT_LOC, average_cc=2.0, max_cc=5,
+        average_mi=SAMPLE_MAINTAINABILITY,
         quality_gate_passed=passed, issues=issues,
         summary_by_engine={"AST-Smell": len(issues)},
     )
@@ -55,6 +60,14 @@ class TestGitHubPRPublishing(unittest.TestCase):
     def response(body):
         return io.BytesIO(json.dumps(body).encode("utf-8"))
 
+    def fake_comments_api(self, requests, comments, result_id):
+        def fake_open(request, timeout):
+            requests.append(request)
+            if request.get_method() == "GET":
+                return self.response(comments)
+            return self.response({"id": result_id})
+        return fake_open
+
     def test_comment_distinguishes_gate_conditions_from_informational_metrics(self):
         comment = GitHubPRReviewBot().build_pr_comment_markdown(sample_report(False))
         self.assertIn("| **HIGH/CRITICAL Issues** | **1** | 0 required for PASS |", comment)
@@ -62,19 +75,26 @@ class TestGitHubPRPublishing(unittest.TestCase):
         self.assertIn("| **Average Maintainability Index (MI)** | 75.0 / 100 | Informational |", comment)
         self.assertIn("| **Average Cyclomatic Complexity (CC)** | 2.00 | Informational |", comment)
 
+    def test_incremental_pr_comment_discloses_legacy_repository_findings(self):
+        report = sample_report(False)
+        report.quality_gate_passed = True
+        report.pr_gate = {
+            "baseline_commit": "previous-commit",
+            "new_high_or_critical": 0,
+            "complexity_regressions": 0,
+        }
+        comment = GitHubPRReviewBot().build_pr_comment_markdown(report)
+        self.assertIn("**Quality Gate:** **PASSED**", comment)
+        self.assertIn("**HIGH/CRITICAL Issues** | **1** | Full repository (informational)", comment)
+        self.assertIn("**New HIGH/CRITICAL Issues** | **0** | 0 required for PR PASS", comment)
+        self.assertIn("**New/Worsened Complexity Violations** | **0**", comment)
+        self.assertIn("`previous-commit`", comment)
+
     def test_creates_comment_if_no_bot_summary_exists(self):
         calls = []
-
-        def fake_open(req, timeout):
-            calls.append(req)
-            if req.get_method() == "GET":
-                return self.response([{
-                    "id": 1,
-                    "user": {"login": "some-developer"},
-                    "body": GitHubPRReviewBot.COMMENT_MARKER,
-                }])
-            return self.response({"id": 123})
-
+        others = [{"id": 1, "user": {"login": "some-developer"},
+                   "body": GitHubPRReviewBot.COMMENT_MARKER}]
+        fake_open = self.fake_comments_api(calls, others, result_id=123)
         with patch("urllib.request.urlopen", side_effect=fake_open):
             self.assertTrue(GitHubPRReviewBot().post_to_github_if_configured(sample_report(False), self.payload_path))
 
@@ -89,22 +109,15 @@ class TestGitHubPRPublishing(unittest.TestCase):
 
     def test_updates_existing_bot_summary(self):
         calls = []
-
-        def fake_open(req, timeout):
-            calls.append(req)
-            if req.get_method() == "GET":
-                return self.response([{
-                    "id": 77,
-                    "user": {"login": "github-actions[bot]"},
-                    "body": GitHubPRReviewBot.COMMENT_MARKER + " older result",
-                }])
-            return self.response({"id": 77})
-
+        comments = [{"id": EXISTING_BOT_COMMENT_ID,
+                     "user": {"login": "github-actions[bot]"},
+                     "body": GitHubPRReviewBot.COMMENT_MARKER + " older result"}]
+        fake_open = self.fake_comments_api(calls, comments, EXISTING_BOT_COMMENT_ID)
         with patch("urllib.request.urlopen", side_effect=fake_open):
             self.assertTrue(GitHubPRReviewBot().post_to_github_if_configured(sample_report(), self.payload_path))
 
         self.assertEqual([request.get_method() for request in calls], ["GET", "PATCH"])
-        self.assertEqual(calls[1].full_url, "https://api.github.com/repos/group/spotai/issues/comments/77")
+        self.assertEqual(calls[1].full_url, f"https://api.github.com/repos/group/spotai/issues/comments/{EXISTING_BOT_COMMENT_ID}")
         self.assertIn("PASSED", json.loads(calls[1].data.decode("utf-8"))["body"])
 
     def test_finds_existing_comment_on_later_page(self):

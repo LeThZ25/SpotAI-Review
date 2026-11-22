@@ -5,6 +5,7 @@ Usage:
   python3 spotai_cli.py --repo sample_repos/repo1_ecommerce_java --output-dir reports/repo1 --milestone 4
 """
 import argparse
+import json
 import os
 import sys
 
@@ -16,11 +17,58 @@ try:
     from spotai.github_pr_bot import GitHubPRReviewBot, GitHubPRPublishError
     from spotai.reporter import ReportExporter
     from spotai.repo_resolver import RepoResolver, RepoResolverError
+    from spotai.pr_quality_gate import apply_incremental_quality_gate
 except ImportError:
     from src.spotai.pipeline import SpotAIPipeline
     from src.spotai.github_pr_bot import GitHubPRReviewBot, GitHubPRPublishError
     from src.spotai.reporter import ReportExporter
     from src.spotai.repo_resolver import RepoResolver, RepoResolverError
+    from src.spotai.pr_quality_gate import apply_incremental_quality_gate
+
+
+def _start_web_dashboard(args):
+    try:
+        import uvicorn
+        from spotai.web_server import app
+    except ImportError as err:
+        print(
+            f"[WEB DEPENDENCY ERROR] {err}. "
+            "Install Web dependencies with: python -m pip install -r requirements.txt",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    print("============================================================")
+    print(f"   Starting SpotAI-Review Web Dashboard on http://{args.host}:{args.port}")
+    print(f"   REST API and Interactive Docs: http://{args.host}:{args.port}/docs")
+    print("============================================================")
+    uvicorn.run(app, host=args.host, port=args.port)
+
+
+def _apply_pr_baseline_if_requested(args, report):
+    if args.baseline_report:
+        with open(args.baseline_report, "r", encoding="utf-8") as baseline_file:
+            baseline = json.load(baseline_file)
+        apply_incremental_quality_gate(report, baseline, args.baseline_commit, args.max_cc)
+
+
+def _publish_pr_if_requested(args, pr_bot, report):
+    if not args.publish_pr_comment:
+        return
+    try:
+        published = pr_bot.post_to_github_if_configured(
+            report, os.path.join(args.output_dir, "pr_review_payload.json")
+        )
+    except GitHubPRPublishError as err:
+        print(f"[PR PUBLISH ERROR] {err}", file=sys.stderr)
+        sys.exit(1)
+    if not published:
+        print(
+            "[PR PUBLISH ERROR] Missing GITHUB_TOKEN, GITHUB_REPOSITORY, "
+            "or valid pull_request data in GITHUB_EVENT_PATH",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    print("[PR PUBLISH] GitHub pull request summary created or updated")
 
 
 def main():
@@ -38,6 +86,8 @@ def main():
     parser.add_argument("--max-cc", type=int, default=10, help="Cyclomatic Complexity warning threshold")
     parser.add_argument("--milestone", type=int, choices=[1, 2, 3, 4], default=4, help="Run mode matching project milestone (1..4)")
     parser.add_argument("--fail-on-gate", action="store_true", help="Exit with non-zero code if Quality Gate fails")
+    parser.add_argument("--baseline-report", help="Baseline JSON report for incremental pull request quality checks")
+    parser.add_argument("--baseline-commit", default="unknown", help="Base commit used for incremental PR report")
     parser.add_argument("--publish-pr-comment", action="store_true", help="Create or update the GitHub Actions bot's pull request summary")
     parser.add_argument(
         "--cleanup-temp",
@@ -64,22 +114,7 @@ def main():
                 pass
 
     if args.web:
-        try:
-            import uvicorn
-            from spotai.web_server import app
-        except ImportError as err:
-            print(
-                f"[WEB DEPENDENCY ERROR] {err}. "
-                "Install Web dependencies with: python -m pip install -r requirements.txt",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        print("============================================================")
-        print(f"   Starting SpotAI-Review Web Dashboard on http://{args.host}:{args.port}")
-        print(f"   REST API and Interactive Docs: http://{args.host}:{args.port}/docs")
-        print("============================================================")
-        uvicorn.run(app, host=args.host, port=args.port)
-        return
+        return _start_web_dashboard(args)
 
     if not args.repo:
         parser.print_help()
@@ -106,6 +141,7 @@ def main():
             milestone=args.milestone,
         )
         report = pipeline.analyze(repo_dir, repo_name=repo_name)
+        _apply_pr_baseline_if_requested(args, report)
 
         os.makedirs(args.output_dir, exist_ok=True)
         ReportExporter.save_json(report, os.path.join(args.output_dir, "analysis_report.json"))
@@ -117,22 +153,7 @@ def main():
         with open(os.path.join(args.output_dir, "pr_comment.md"), "w", encoding="utf-8") as f:
             f.write(md_summary)
 
-        if args.publish_pr_comment:
-            try:
-                published = pr_bot.post_to_github_if_configured(
-                    report, os.path.join(args.output_dir, "pr_review_payload.json")
-                )
-            except GitHubPRPublishError as err:
-                print(f"[PR PUBLISH ERROR] {err}", file=sys.stderr)
-                sys.exit(1)
-            if not published:
-                print(
-                    "[PR PUBLISH ERROR] Missing GITHUB_TOKEN, GITHUB_REPOSITORY, "
-                    "or valid pull_request data in GITHUB_EVENT_PATH",
-                    file=sys.stderr,
-                )
-                sys.exit(1)
-            print("[PR PUBLISH] GitHub pull request summary created or updated")
+        _publish_pr_if_requested(args, pr_bot, report)
 
         print(f"=== SpotAI-Review ({report.milestone_stage}) Summary for '{report.repository_name}' ===")
         print(f"Files Scanned : {report.files_scanned} ({report.total_loc} LOC)")

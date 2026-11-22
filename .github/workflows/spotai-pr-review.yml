@@ -21,6 +21,8 @@ jobs:
     steps:
       - name: Checkout Pull Request Code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up JDK 17 for SpotBugs Bytecode Analysis
         uses: actions/setup-java@v4
@@ -33,6 +35,15 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Analyze base commit for incremental PR quality gate
+        if: github.event_name == 'pull_request'
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git worktree add --detach "$RUNNER_TEMP/spotai-pr-base" "$PR_BASE_SHA"
+          python3 spotai_cli.py --repo "$RUNNER_TEMP/spotai-pr-base" \
+            --output-dir "$RUNNER_TEMP/spotai-pr-baseline" --clone-threshold 0.80 --milestone 4
+
       - name: Run SpotAI-Review (SpotBugs + AST Smells + Clone Detection + AI Refactoring)
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -40,8 +51,12 @@ jobs:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           args=(--repo . --output-dir reports/pr_review --clone-threshold 0.80 --milestone 4 --fail-on-gate)
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            args+=(--baseline-report "$RUNNER_TEMP/spotai-pr-baseline/analysis_report.json" --baseline-commit "$PR_BASE_SHA")
+          fi
           if [[ "$PUBLISH_PR_COMMENT" == "true" ]]; then
             args+=(--publish-pr-comment)
           else

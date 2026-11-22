@@ -7,6 +7,7 @@ Publishes or updates one GitHub Actions bot comment when PR context is available
 import json
 import os
 import re
+from http import HTTPStatus
 import urllib.error
 import urllib.request
 from typing import Dict, Any
@@ -20,6 +21,8 @@ class GitHubPRPublishError(RuntimeError):
 class GitHubPRReviewBot:
     COMMENT_MARKER = "<!-- spotai-review:automated-pr-summary -->"
     BOT_LOGIN = "github-actions[bot]"
+    API_VERSION = "2022-11-28"
+    REQUEST_TIMEOUT_SECONDS = 20
 
     def __init__(self):
         self.github_token = os.environ.get("GITHUB_TOKEN", "")
@@ -28,27 +31,19 @@ class GitHubPRReviewBot:
 
     def build_pr_comment_markdown(self, report: AnalysisReport) -> str:
         gate_badge = "PASSED" if report.quality_gate_passed else "FAILED (Action Required)"
-        high_or_critical = sum(issue.severity in ("HIGH", "CRITICAL") for issue in report.issues)
         lines = [
             self.COMMENT_MARKER,
             f"## SpotAI-Review: Automated Static Analysis & AI Refactoring Report",
             f"**Repository:** `{report.repository_name}` | **Quality Gate:** **{gate_badge}**",
             "",
-            "### 1. Executive Summary Metrics",
-            "| Metric | Value | Threshold / Target |",
-            "| :--- | :---: | :---: |",
-            f"| **Files Scanned** | {report.files_scanned} | Checked-out repository |",
-            f"| **Total Lines of Code (LOC)** | {report.total_loc} | - |",
-            f"| **Total Issues Detected** | **{len(report.issues)}** | Informational |",
-            f"| **HIGH/CRITICAL Issues** | **{high_or_critical}** | 0 required for PASS |",
-            f"| **Average Cyclomatic Complexity (CC)** | {report.average_cc:.2f} | Informational |",
-            f"| **Max Method Cyclomatic Complexity** | {report.max_cc} | <= 10 |",
-            f"| **Average Maintainability Index (MI)** | {report.average_mi:.1f} / 100 | Informational |",
+        ]
+        lines.extend(self._summary_metrics(report))
+        lines.extend([
             "",
             "### 2. Issues Breakdown by Detection Engine",
             "| Engine | Count | Primary Focus |",
             "| :--- | :---: | :--- |",
-        ]
+        ])
         for eng, cnt in sorted(report.summary_by_engine.items()):
             desc = (
                 "Bytecode bugs, Null-pointer paths, SQLi, resource leaks"
@@ -63,24 +58,57 @@ class GitHubPRReviewBot:
 
         lines.extend(["", "### 3. Top Actionable Findings & AI Refactoring Suggestions"])
         for issue in report.issues[:8]:
-            cc_badge = (
-                f" | **CC Reduction:** `{issue.cyclomatic_complexity} -> {issue.verified_cc_after}`"
-                if issue.cyclomatic_complexity and issue.verified_cc_after
-                else ""
-            )
-            lines.extend([
-                f"#### [{issue.severity}] `{issue.issue_id}` — {issue.smell_or_bug_type} (`{issue.source_engine}`)",
-                f"- **Location:** `{issue.file_path}:{issue.start_line}-{issue.end_line}` in `{issue.entity_name}`{cc_badge}",
-                f"- **Finding:** {issue.message[:800]}",
-                f"- **AI Engineering Rationale:** {(issue.ai_explanation or 'N/A')[:800]}",
-                "- **AI Suggested Refactoring:**",
-                "```java" if issue.file_path.endswith(".java") else "```python",
-                (issue.ai_refactored_code or "// No suggestion generated")[:1200],
-                "```",
-                f"- **Stated Limitations & Edge Cases:** _{(issue.ai_limitations or 'Verify with unit tests before merging.')[:450]}_",
-                "",
-            ])
+            lines.extend(self._issue_markdown_lines(issue))
         return "\n".join(lines)
+
+    @staticmethod
+    def _summary_metrics(report):
+        high_or_critical = sum(issue.severity in ("HIGH", "CRITICAL") for issue in report.issues)
+        pr_gate = report.pr_gate
+        high_target = "0 required for PASS" if pr_gate is None else "Full repository (informational)"
+        cc_target = "<= 10" if pr_gate is None else "PR regressions checked against baseline"
+        lines = [
+            "### 1. Executive Summary Metrics",
+            "| Metric | Value | Threshold / Target |",
+            "| :--- | :---: | :---: |",
+            f"| **Files Scanned** | {report.files_scanned} | Checked-out repository |",
+            f"| **Total Lines of Code (LOC)** | {report.total_loc} | - |",
+            f"| **Total Issues Detected** | **{len(report.issues)}** | Informational |",
+            f"| **HIGH/CRITICAL Issues** | **{high_or_critical}** | {high_target} |",
+            f"| **Average Cyclomatic Complexity (CC)** | {report.average_cc:.2f} | Informational |",
+            f"| **Max Method Cyclomatic Complexity** | {report.max_cc} | {cc_target} |",
+            f"| **Average Maintainability Index (MI)** | {report.average_mi:.1f} / 100 | Informational |",
+        ]
+        if pr_gate is not None:
+            lines.extend([
+                f"| **New HIGH/CRITICAL Issues** | **{pr_gate['new_high_or_critical']}** | 0 required for PR PASS |",
+                f"| **New/Worsened Complexity Violations** | **{pr_gate['complexity_regressions']}** | 0 required for PR PASS |",
+                "",
+                f"**PR gate baseline:** `{pr_gate['baseline_commit']}`. "
+                "Existing repository findings are included for visibility. "
+                "The PR gate fails on newly introduced HIGH/CRITICAL findings, "
+                "new or worsened method complexity above the configured threshold, or invalid analysis.",
+            ])
+        return lines
+
+    @staticmethod
+    def _issue_markdown_lines(issue):
+        cc_badge = (
+            f" | **CC Reduction:** `{issue.cyclomatic_complexity} -> {issue.verified_cc_after}`"
+            if issue.cyclomatic_complexity and issue.verified_cc_after else ""
+        )
+        return [
+            f"#### [{issue.severity}] `{issue.issue_id}` — {issue.smell_or_bug_type} (`{issue.source_engine}`)",
+            f"- **Location:** `{issue.file_path}:{issue.start_line}-{issue.end_line}` in `{issue.entity_name}`{cc_badge}",
+            f"- **Finding:** {issue.message[:800]}",
+            f"- **AI Engineering Rationale:** {(issue.ai_explanation or 'N/A')[:800]}",
+            "- **AI Suggested Refactoring:**",
+            "```java" if issue.file_path.endswith(".java") else "```python",
+            (issue.ai_refactored_code or "// No suggestion generated")[:1200],
+            "```",
+            f"- **Stated Limitations & Edge Cases:** _{(issue.ai_limitations or 'Verify with unit tests before merging.')[:450]}_",
+            "",
+        ]
 
     def build_pr_review_payload(self, report: AnalysisReport) -> Dict[str, Any]:
         comments = []
@@ -109,7 +137,7 @@ class GitHubPRReviewBot:
         headers = {
             "Authorization": f"Bearer {self.github_token}",
             "Accept": "application/vnd.github+json",
-            "X-GitHub-Api-Version": "2022-11-28",
+            "X-GitHub-Api-Version": self.API_VERSION,
         }
         data = None
         if payload is not None:
@@ -117,13 +145,13 @@ class GitHubPRReviewBot:
             headers["Content-Type"] = "application/json"
         req = urllib.request.Request(url, data=data, headers=headers, method=method)
         try:
-            with urllib.request.urlopen(req, timeout=20) as resp:
+            with urllib.request.urlopen(req, timeout=self.REQUEST_TIMEOUT_SECONDS) as resp:
                 content = resp.read()
                 return json.loads(content) if content else {}
         except urllib.error.HTTPError as err:
             hint = {
-                401: "Check the GITHUB_TOKEN used by the workflow.",
-                403: "Check pull-requests: write permission. Forked PR tokens are usually read-only.",
+                HTTPStatus.UNAUTHORIZED: "Check the GITHUB_TOKEN used by the workflow.",
+                HTTPStatus.FORBIDDEN: "Check pull-requests: write permission. Forked PR tokens are usually read-only.",
             }.get(err.code, "")
             raise GitHubPRPublishError(
                 f"GitHub API {method} failed with HTTP {err.code} ({err.reason}). {hint}".strip()
@@ -145,20 +173,31 @@ class GitHubPRReviewBot:
         if not (self.github_token and self.repo and self.event_path and os.path.exists(self.event_path)):
             return False
 
-        try:
-            with open(self.event_path, "r", encoding="utf-8") as f:
-                ev = json.load(f)
-            pr_data = ev.get("pull_request")
-            pr_number = pr_data.get("number") if isinstance(pr_data, dict) else None
-        except (OSError, ValueError, TypeError) as err:
-            raise GitHubPRPublishError(f"Unable to read GitHub PR event: {err}") from err
-
+        pr_number = self._get_pull_request_number()
         if not (isinstance(pr_number, int) and pr_number > 0):
             return False
         if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", self.repo):
             raise GitHubPRPublishError("Invalid GITHUB_REPOSITORY value")
 
         comments_url = f"https://api.github.com/repos/{self.repo}/issues/{pr_number}/comments"
+        existing_id = self._find_existing_summary(comments_url)
+        if existing_id is None:
+            self._request_json(comments_url, "POST", {"body": payload["body"]})
+        else:
+            update_url = f"https://api.github.com/repos/{self.repo}/issues/comments/{existing_id}"
+            self._request_json(update_url, "PATCH", {"body": payload["body"]})
+        return True
+
+    def _get_pull_request_number(self):
+        try:
+            with open(self.event_path, "r", encoding="utf-8") as f:
+                event = json.load(f)
+            pr_data = event.get("pull_request")
+            return pr_data.get("number") if isinstance(pr_data, dict) else None
+        except (OSError, ValueError, TypeError) as err:
+            raise GitHubPRPublishError(f"Unable to read GitHub PR event: {err}") from err
+
+    def _find_existing_summary(self, comments_url: str):
         page = 1
         existing_id = None
         while True:
@@ -172,10 +211,4 @@ class GitHubPRReviewBot:
             if len(comments) < 100:
                 break
             page += 1
-
-        if existing_id is None:
-            self._request_json(comments_url, "POST", {"body": payload["body"]})
-        else:
-            update_url = f"https://api.github.com/repos/{self.repo}/issues/comments/{existing_id}"
-            self._request_json(update_url, "PATCH", {"body": payload["body"]})
-        return True
+        return existing_id
