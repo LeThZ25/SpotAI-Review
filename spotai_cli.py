@@ -13,12 +13,12 @@ if not getattr(sys, "frozen", False):
 
 try:
     from spotai.pipeline import SpotAIPipeline
-    from spotai.github_pr_bot import GitHubPRReviewBot
+    from spotai.github_pr_bot import GitHubPRReviewBot, GitHubPRPublishError
     from spotai.reporter import ReportExporter
     from spotai.repo_resolver import RepoResolver, RepoResolverError
 except ImportError:
     from src.spotai.pipeline import SpotAIPipeline
-    from src.spotai.github_pr_bot import GitHubPRReviewBot
+    from src.spotai.github_pr_bot import GitHubPRReviewBot, GitHubPRPublishError
     from src.spotai.reporter import ReportExporter
     from src.spotai.repo_resolver import RepoResolver, RepoResolverError
 
@@ -38,6 +38,7 @@ def main():
     parser.add_argument("--max-cc", type=int, default=10, help="Cyclomatic Complexity warning threshold")
     parser.add_argument("--milestone", type=int, choices=[1, 2, 3, 4], default=4, help="Run mode matching project milestone (1..4)")
     parser.add_argument("--fail-on-gate", action="store_true", help="Exit with non-zero code if Quality Gate fails")
+    parser.add_argument("--publish-pr-comment", action="store_true", help="Create or update the GitHub Actions bot's pull request summary")
     parser.add_argument(
         "--cleanup-temp",
         action="store_true",
@@ -115,6 +116,23 @@ def main():
         md_summary = pr_bot.build_pr_comment_markdown(report)
         with open(os.path.join(args.output_dir, "pr_comment.md"), "w", encoding="utf-8") as f:
             f.write(md_summary)
+
+        if args.publish_pr_comment:
+            try:
+                published = pr_bot.post_to_github_if_configured(
+                    report, os.path.join(args.output_dir, "pr_review_payload.json")
+                )
+            except GitHubPRPublishError as err:
+                print(f"[PR PUBLISH ERROR] {err}", file=sys.stderr)
+                sys.exit(1)
+            if not published:
+                print(
+                    "[PR PUBLISH ERROR] Missing GITHUB_TOKEN, GITHUB_REPOSITORY, "
+                    "or valid pull_request data in GITHUB_EVENT_PATH",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            print("[PR PUBLISH] GitHub pull request summary created or updated")
 
         print(f"=== SpotAI-Review ({report.milestone_stage}) Summary for '{report.repository_name}' ===")
         print(f"Files Scanned : {report.files_scanned} ({report.total_loc} LOC)")

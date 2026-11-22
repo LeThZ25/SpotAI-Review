@@ -3,7 +3,12 @@ name: SpotAI-Review Pull Request Quality Gate
 on:
   pull_request:
     branches: [ "main", "develop" ]
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
+
+concurrency:
+  group: spotai-pr-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -30,16 +35,23 @@ jobs:
 
       - name: Run SpotAI-Review (SpotBugs + AST Smells + Clone Detection + AI Refactoring)
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+          PUBLISH_PR_COMMENT: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          python3 spotai_cli.py --repo . --output-dir reports/pr_review --clone-threshold 0.80 --milestone 4
+          args=(--repo . --output-dir reports/pr_review --clone-threshold 0.80 --milestone 4 --fail-on-gate)
+          if [[ "$PUBLISH_PR_COMMENT" == "true" ]]; then
+            args+=(--publish-pr-comment)
+          else
+            echo "PR publishing skipped for forked PR or manual workflow run."
+          fi
+          python3 spotai_cli.py "${args[@]}"
 
       - name: Upload SARIF Report to GitHub Security Tab
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        if: ${{ always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
         with:
           sarif_file: reports/pr_review/analysis_report.sarif
 
